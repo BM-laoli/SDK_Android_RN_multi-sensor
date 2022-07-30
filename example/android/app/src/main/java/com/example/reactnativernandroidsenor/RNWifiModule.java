@@ -14,6 +14,9 @@ import com.facebook.soloader.SoLoader;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.net.NetworkSpecifier;
+import android.net.wifi.WifiNetworkSpecifier;
+import android.os.PatternMatcher;
 import android.provider.Settings;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
@@ -48,15 +51,17 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
   //WifiManager Instance
   WifiManager wifi;
   ReactApplicationContext context;
-
+  ConnectivityManager connectivityManager;
+ ConnectivityManager.NetworkCallback MnetworkCallback;
   //Constructor
   public RNWifiModule(ReactApplicationContext reactContext) {
     super(reactContext);
     wifi = (WifiManager) reactContext.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
     context = (ReactApplicationContext) getReactApplicationContext();
+    connectivityManager = (ConnectivityManager)
+      getReactApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
   }
 
-  //Name for module register to use:
   @Override
   public String getName() {
     return "WifiManager";
@@ -99,14 +104,7 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
     }
   }
 
-  //Method to force wifi usage if the user needs to send requests via wifi
-  //if it does not have internet connection. Useful for IoT applications, when
-  //the app needs to communicate and send requests to a device that have no
-  //internet connection via wifi.
 
-  //Receives a boolean to enable forceWifiUsage if true, and disable if false.
-  //Is important to enable only when communicating with the device via wifi
-  //and remember to disable it when disconnecting from device.
   @ReactMethod
   public void forceWifiUsage(boolean useWifi) {
     boolean canWriteFlag = false;
@@ -180,26 +178,15 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
     wifi.setWifiEnabled(enabled);
   }
 
-  //Send the ssid and password of a Wifi network into this to connect to the network.
-  //Example:  wifi.findAndConnect(ssid, password);
-  //After 10 seconds, a post telling you whether you are connected will pop up.
-  //Callback returns true if ssid is in the range
+
   @ReactMethod
   public void connectToProtectedSSID(String ssid, String password, Boolean isWep, Promise promise) {
     List<ScanResult> results = wifi.getScanResults();
-    boolean connected = false;
     for (ScanResult result : results) {
       String resultString = "" + result.SSID;
       if (ssid.equals(resultString)) {
-        connected = connectTo(result, password, ssid);
-        System.out.println("Error");
-        System.out.println(connected);
+        connectTo(result, password, ssid, promise);
       }
-    }
-    if (connected) {
-      promise.resolve(true);
-    } else {
-      promise.reject("Can't connect to wifi!", "Can't connect to wifi!");
     }
   }
 
@@ -215,124 +202,152 @@ public class RNWifiModule extends ReactContextBaseJavaModule {
     }
   }
 
-  //Method to connect to WIFI Network
-  public Boolean connectTo(ScanResult result, String password, String ssid) {
-    //Make new configuration
-    WifiConfiguration conf = new WifiConfiguration();
+  //Android 10 自动连接WiFi方案
+  public void connectToWifiWithAndroid10Plush(String ssid,String psw,Promise promise) {
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+      NetworkSpecifier specifier =
+        new WifiNetworkSpecifier.Builder()
+          .setSsidPattern(new PatternMatcher(ssid, PatternMatcher.PATTERN_PREFIX))
+          .setWpa2Passphrase(psw)
+          .build();
 
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-      conf.SSID = ssid;
-    } else {
-      conf.SSID = "\"" + ssid + "\"";
+      NetworkRequest request =
+        new NetworkRequest.Builder()
+          .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+          .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+          .setNetworkSpecifier(specifier)
+          .build();
+
+      // WiFi连接回调
+      ConnectivityManager.NetworkCallback networkCallback = new ConnectivityManager.NetworkCallback() {
+        //WiFi连接成功
+        @Override
+        public void onAvailable(Network network) {
+          // do success processing here.
+          //如果WiFi连接成功，下面的代码表示使用该wifi网络
+          connectivityManager.bindProcessToNetwork(network);
+          promise.resolve("链接成功");
+        }
+        //WiFi连接失败
+        @Override
+        public void onUnavailable() {
+          // do failure processing here..
+          promise.resolve("链接失败");
+        }
+      };
+
+      // 不能直接赋值 ！得找个变量存起来 给disconnet 用
+      MnetworkCallback = networkCallback;
+      connectivityManager.requestNetwork(request, networkCallback);
     }
-
-    String capabilities = result.capabilities;
-
-    if (capabilities.contains("WPA") ||
-      capabilities.contains("WPA2") ||
-      capabilities.contains("WPA/WPA2 PSK")) {
-
-      // appropriate ciper is need to set according to security type used,
-      // ifcase of not added it will not be able to connect
-      conf.preSharedKey = String.format("\"%s\"", password);;
-
-      conf.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
-
-      conf.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
-
-      conf.status = WifiConfiguration.Status.ENABLED;
-
-      conf.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.TKIP);
-      conf.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.CCMP);
-
-      conf.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
-
-      conf.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.TKIP);
-      conf.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
-
-      conf.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
-      conf.allowedProtocols.set(WifiConfiguration.Protocol.WPA);
-
-    } else if (capabilities.contains("WEP")) {
-      conf.wepKeys[0] = "\"" + password + "\"";
-      conf.wepTxKeyIndex = 0;
-      conf.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
-      conf.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.WEP40);
-
-    } else {
-      conf.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
-    }
-
-    //Remove the existing configuration for this netwrok
-    if (ActivityCompat.checkSelfPermission(getReactApplicationContext(), Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-      return false;
-    }
-    List<WifiConfiguration> mWifiConfigList = wifi.getConfiguredNetworks();
-
-    int updateNetwork = -1;
-
-    for (WifiConfiguration wifiConfig : mWifiConfigList) {
-      if (wifiConfig.SSID.equals(conf.SSID)) {
-        conf.networkId = wifiConfig.networkId;
-        updateNetwork = wifi.updateNetwork(conf);
-      }
-    }
-
-    // If network not already in configured networks add new network
-    if (updateNetwork == -1) {
-      updateNetwork = wifi.addNetwork(conf);
-      wifi.saveConfiguration();
-    }
-    ;
-
-    if (updateNetwork == -1) {
-      return false;
-    }
-
-    boolean disconnect = wifi.disconnect();
-    if (!disconnect) {
-      return false;
-    }
-    ;
-
-    boolean enableNetwork = wifi.enableNetwork(updateNetwork, true);
-    if (!enableNetwork) {
-      return false;
-    };
-
-    return true;
   }
 
-  /**
-   * WEP has two kinds of password, a hex value that specifies the key or
-   * a character string used to generate the real hex. This checks what kind of
-   * password has been supplied. The checks correspond to WEP40, WEP104 & WEP232
-   * @param s
-   * @return
-   */
-  private static boolean getHexKey(String s) {
-    if (s == null) {
-      return false;
-    }
+  //Method to connect to WIFI Network
+  public Boolean connectTo(ScanResult result, String password, String ssid, Promise promise) {
 
-    int len = s.length();
-    if (len != 10 && len != 26 && len != 58) {
-      return false;
-    }
+    // Android 10 以上 存在兼容性问题
+    if ( Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ) {
+      String psw = "\"" + password  + "\"";
+      this.connectToWifiWithAndroid10Plush(ssid,password ,promise);
+      return true;
+    } else {
+        System.out.println("断开链接");
+        //Make new configuration
+        WifiConfiguration conf = new WifiConfiguration();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+          conf.SSID = ssid;
+        } else {
+          conf.SSID = "\"" + ssid + "\"";
+        }
 
-    for (int i = 0; i < len; ++i) {
-      char c = s.charAt(i);
-      if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-        continue;
-      }
-      return false;
+        String capabilities = result.capabilities;
+
+        if (capabilities.contains("WPA") ||
+          capabilities.contains("WPA2") ||
+          capabilities.contains("WPA/WPA2 PSK")) {
+          // appropriate ciper is need to set according to security type used,
+          // ifcase of not added it will not be able to connect
+          conf.preSharedKey = "\"" + password + "\"";
+
+          conf.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
+
+          conf.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
+
+          conf.status = WifiConfiguration.Status.ENABLED;
+
+          conf.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.TKIP);
+          conf.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.CCMP);
+
+          conf.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK);
+
+          conf.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.TKIP);
+          conf.allowedPairwiseCiphers.set(WifiConfiguration.PairwiseCipher.CCMP);
+
+          conf.allowedProtocols.set(WifiConfiguration.Protocol.RSN);
+          conf.allowedProtocols.set(WifiConfiguration.Protocol.WPA);
+
+        } else if (capabilities.contains("WEP")) {
+          conf.wepKeys[0] = "\"" + password + "\"";
+          conf.wepTxKeyIndex = 0;
+          conf.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
+          conf.allowedGroupCiphers.set(WifiConfiguration.GroupCipher.WEP40);
+
+        } else {
+          conf.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
+        }
+
+        //Remove the existing configuration for this netwrok
+        if (ActivityCompat.checkSelfPermission(getReactApplicationContext(), Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+          return false;
+        }
+        List<WifiConfiguration> mWifiConfigList = wifi.getConfiguredNetworks();
+
+        int updateNetwork = -1;
+
+        for (WifiConfiguration wifiConfig : mWifiConfigList) {
+          if (wifiConfig.SSID.equals(conf.SSID)) {
+            conf.networkId = wifiConfig.networkId;
+            updateNetwork = wifi.updateNetwork(conf);
+          }
+        }
+
+        // If network not already in configured networks add new network
+        if (updateNetwork == -1) {
+          updateNetwork = wifi.addNetwork(conf);
+          wifi.saveConfiguration();
+        };
+
+        if (updateNetwork == -1) {
+          promise.reject("链接失败");
+          return false;
+        }
+
+        boolean disconnect = wifi.disconnect();
+        if (!disconnect) {
+          promise.reject("链接失败");
+          return false;
+        }
+        ;
+
+        boolean enableNetwork = wifi.enableNetwork(updateNetwork, true);
+        if (!enableNetwork) {
+          promise.reject("链接失败");
+          return false;
+        };
+        promise.resolve(true);
+      return true;
     }
-    return true;
   }
 
   //Disconnect current Wifi.
   @ReactMethod
   public void disconnect() {
+  //  在 android 10 以上会有兼容性的 问题
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      connectivityManager.unregisterNetworkCallback(MnetworkCallback);
+      connectivityManager.bindProcessToNetwork(null);
+      return;
+    }
     wifi.disconnect();
   }
 

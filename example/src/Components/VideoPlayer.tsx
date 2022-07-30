@@ -35,8 +35,8 @@ const VideoPlayer: React.FC<NextViewProps> = (props) => {
         <Video
           {...videoControl}
           source={{
-            uri: path,
-            // uri: 'http://vfx.mtime.cn/Video/2019/03/19/mp4/190319212559089721.mp4',
+            // uri: path,
+            uri: 'http://vfx.mtime.cn/Video/2019/03/19/mp4/190319212559089721.mp4',
             // uri: '/storage/emulated/0/Download/1658997906279.mp4',
           }} // Can be a URL or a local file.
           onBuffer={onBuffer} // Callback when remote video is buffering

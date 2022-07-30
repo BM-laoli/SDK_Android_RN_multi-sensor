@@ -19,6 +19,7 @@ public class RNNativeModulePackge implements ReactPackage {
     modules.add(new AudioRecorderManager(reactContext));
     modules.add(new RNSoundModule(reactContext));
     modules.add(new RNWifiModule(reactContext));
+    modules.add(new RNMobPushModule(reactContext));
     return modules;
   }
 

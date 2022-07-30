@@ -97,6 +97,6 @@ class RNNativeModule extends ReactContextBaseJavaModule {
   @ReactMethod
   public void vibrator(){
    Vibrator vibrator = (Vibrator) getReactApplicationContext().getSystemService(Context.VIBRATOR_SERVICE);
-    vibrator.vibrate(1000);
+   vibrator.vibrate(1000);
   }
 }
