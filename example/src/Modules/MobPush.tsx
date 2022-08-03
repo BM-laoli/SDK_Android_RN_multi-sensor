@@ -4,16 +4,16 @@ import MobPushManger, { initPush } from '../nativeModule/mobPush';
 
 const MobPush = () => {
   const eventListenerRef = useRef<any>(null);
-
   useEffect(() => {
+    initPush;
     const eventEmitter = new NativeEventEmitter(MobPushManger);
     eventListenerRef.current = eventEmitter.addListener(
       'EventReminder',
       (event) => {
         console.log(event); // "someValue"
-        const valueOBJ = JSON.parse(event.exObject);
-        console.log(typeof valueOBJ);
-        console.log(valueOBJ.key1);
+        // const valueOBJ = JSON.parse(event.exObject);
+        // console.log(typeof valueOBJ);
+        // console.log(valueOBJ.key1);
       }
     );
     return () => {

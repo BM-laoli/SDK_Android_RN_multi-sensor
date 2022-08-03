@@ -7,9 +7,12 @@
 
 #import "AppDelegate.h"
 
+
 #import <React/RCTBridge.h>
 #import <React/RCTBundleURLProvider.h>
 #import <React/RCTRootView.h>
+#import "RNMobPushManger.h"
+
 
 #ifdef FB_SONARKIT_ENABLED
 #import <FlipperKit/FlipperClient.h>
@@ -18,6 +21,8 @@
 #import <FlipperKitNetworkPlugin/FlipperKitNetworkPlugin.h>
 #import <SKIOSNetworkPlugin/SKIOSNetworkAdapter.h>
 #import <FlipperKitReactPlugin/FlipperKitReactPlugin.h>
+
+
 static void InitializeFlipper(UIApplication *application) {
   FlipperClient *client = [FlipperClient sharedClient];
   SKDescriptorMapper *layoutDescriptorMapper = [[SKDescriptorMapper alloc] initWithDefaults];
@@ -31,8 +36,13 @@ static void InitializeFlipper(UIApplication *application) {
 
 @implementation AppDelegate
 
+
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {
+//  RN 的组册和回掉
+//  RNMobPushManger *rnMobPush = [[RNMobPushManger alloc]init];
+//  [rnMobPush startReg];
+  
   #ifdef FB_SONARKIT_ENABLED
     InitializeFlipper(application);
   #endif
@@ -59,5 +69,4 @@ static void InitializeFlipper(UIApplication *application) {
   return [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];
 #endif
 }
-
 @end

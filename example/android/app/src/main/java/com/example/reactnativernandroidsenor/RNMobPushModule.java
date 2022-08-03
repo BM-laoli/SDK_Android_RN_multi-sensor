@@ -110,10 +110,10 @@ public class RNMobPushModule extends ReactContextBaseJavaModule {
 
         // 创建JS 对象 发给RN
         WritableMap params = Arguments.createMap();
-        params.putString("Id", Id);
-        params.putString("TaskId", TaskId);
-        params.putString("Title", Title);
-        params.putString("Content", Content);
+        params.putString("messageID", Id);
+        params.putString("taskID", TaskId);
+        params.putString("title", Title);
+        params.putString("body", Content);
         params.putString("exObject", jsonObj.toString()); // 注意这是一个JSONString
         sendEvent(getReactApplicationContext(), "EventReminder", params);
       }
